@@ -1,0 +1,455 @@
+<!--
+Project brief (from customer):
+
+Title: JobApply — Interactive Job Application Landing Page
+Goal: A polished, responsive single-page site built with HTML/CSS/JavaScript that showcases the product and includes a working job application form with live preview, client-side validation, and localStorage persistence. The deliverable must be a single file (index.html) that can be opened locally and demonstrates the UI & interactions.
+
+Must-haves:
+- Responsive layout (mobile / tablet / desktop)
+- Hero section with CTA
+- Features section
+- Pricing / Plans cards
+- Working application form:
+  - Inputs: name, email, position, cover letter (textarea), skills (multi-select chips), resume upload (PDF only)
+  - Live preview of application on the right (desktop) / below (mobile)
+  - Client-side validation with helpful inline messages
+  - Save-to-localStorage and "Load last draft" button
+  - Submit button that simulates an API call and shows success/failure states
+- Accessibility: labels, keyboard focus styles, and aria attributes
+- Small JS animations and a dark-mode toggle
+
+Acceptance criteria (how I'll test you as a customer):
+- The form rejects non-PDF resumes and invalid emails
+- The preview updates as I type
+- The draft saves and loads correctly from localStorage
+- The Submit shows a loading spinner for 1.5s then a success toast
+- It looks good on small and large screens
+
+Notes for developer: implement everything in one HTML file. Keep CSS simple and well-structured. No external dependencies.
+
+-->
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>JobApply — Interactive Job Application</title>
+  <meta name="description" content="Interactive job application landing page with live preview, validation, and local draft saving.">
+  <style>
+    :root{
+      --bg:#f6f8fb;--card:#fff;--muted:#6b7280;--accent:#0066ff;--radius:12px;--glass:rgba(255,255,255,0.6);
+      color-scheme: light;
+    }
+    [data-theme='dark']{
+      --bg:#0b1020;--card:#0f1724;--muted:#98a0b3;--accent:#58a6ff;--glass:rgba(255,255,255,0.03);
+      color-scheme: dark;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; background:linear-gradient(180deg,var(--bg), #e9eefc); min-height:100vh; color:green}
+    .container{max-width:1100px;margin:32px auto;padding:20px}
+    header{display:flex;align-items:center;justify-content:space-between;gap:16px}
+    .brand{display:flex;align-items:center;gap:12px}
+    .logo{width:44px;height:44px;border-radius:10px;background:linear-gradient(135deg,var(--accent),#3aa0ff);display:flex;align-items:center;justify-content:center;color:white;font-weight:700}
+    nav{display:flex;gap:14px}
+    nav a{color:var(--muted);text-decoration:none;font-weight:600}
+    .hero{display:grid;grid-template-columns:1fr;gap:18px;margin:28px 0}
+    .hero-card{background:var(--card);border-radius:var(--radius);padding:24px;box-shadow:0 10px 30px rgba(8,15,30,0.06)}
+    .hero h1{margin:0;color:#0b1220;font-size:28px}
+    .sub{color:var(--muted);margin-top:6px}
+    .cta-row{display:flex;gap:12px;margin-top:16px}
+    .btn{padding:10px 16px;border-radius:10px;border:0;cursor:pointer;font-weight:700}
+    .btn-primary{background:var(--accent);color:white}
+    .btn-ghost{background:transparent;border:1px solid rgba(0,0,0,0.06)}
+
+    /* layout for form + preview */
+    .split{display:grid;grid-template-columns:1fr;gap:18px;margin-top:20px}
+    .card{background:var(--card);border-radius:12px;padding:18px;box-shadow:0 10px 20px rgba(2,6,23,0.04)}
+
+    form .row{display:flex;gap:12px}
+    .field{display:flex;flex-direction:column;margin-bottom:12px}
+    label{font-weight:600;color:#0f1724;margin-bottom:6px}
+    input[type='text'],input[type='email'],textarea,select{padding:10px;border-radius:8px;border:1px solid #e6e9ef;background:transparent;outline:none}
+    textarea{min-height:110px;resize:vertical}
+    .muted{font-size:13px;color:var(--muted)}
+    .error{color:#c04343;font-size:13px;margin-top:6px}
+
+    .skills{display:flex;gap:8px;flex-wrap:wrap}
+    .chip{padding:6px 10px;border-radius:999px;background:#eef5ff;border:1px solid #d0e6ff;font-weight:700;color:#034ea2;cursor:pointer}
+    .chip.selected{background:var(--accent);color:white}
+
+    .preview{border-left:1px dashed rgba(0,0,0,0.06);padding-left:18px}
+    .preview h3{margin-top:0;color:#0b1220}
+    .small{font-size:13px}
+
+    /* toast */
+    .toast{position:fixed;right:20px;bottom:20px;background:#111827;color:white;padding:12px 16px;border-radius:10px;box-shadow:0 8px 20px rgba(2,6,23,0.4);display:none}
+
+    /* responsiveness */
+    @media(min-width:900px){
+      .hero{grid-template-columns:1fr 420px}
+      .split{grid-template-columns:1fr 420px}
+    }
+
+    /* focus states */
+    input:focus,textarea:focus,select:focus{box-shadow:0 6px 20px rgba(8,30,80,0.06);border-color:rgba(0,102,255,0.2)}
+
+    /* small helpers */
+    .muted-2{color:var(--muted);font-weight:600}
+    .plan-grid{display:flex;gap:12px;flex-wrap:wrap}
+    .plan{flex:1;min-width:160px;padding:12px;border-radius:10px;border:1px solid rgba(0,0,0,0.04)}
+
+    /* accessibility helpers */
+    .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+
+  </style>
+</head>
+<body>
+  <div class="container" id="app">
+    <header>
+      <div class="brand">
+        <div class="logo">JA</div>
+        <div>
+          <div style="font-weight:800;color:#0b1220">JobApply</div>
+          <div style="font-size:12px;color:var(--muted)">Smart hiring, made simple</div>
+        </div>
+      </div>
+      <nav aria-label="main navigation">
+        <a style="background-color:gray; height:40px; line-height:40px; padding:0 12px; border-radius:8px; color:white;" href="#features">Features</a>
+        <a style="background-color:gray; height:40px; line-height:40px; padding:0 12px; border-radius:8px; color:white;" href="#plans">Plans</a>
+        <a style="background-color:gray; height:40px; line-height:40px; padding:0 12px; border-radius:8px; color:white;" href="#apply">Apply</a>
+        <button style="height:40px; line-height:40px; padding:0 12px; border-radius:8px; color:black;" id="themeToggle" class="btn">Toggle </button>
+      </nav>
+    </header>
+
+    <section class="hero">
+      <div class="hero-card">
+        <h1>Hire faster — with less noise</h1>
+        <p class="sub">Create a delightful application experience for candidates and get structured, clean submissions that your team actually uses. This is a demo single-file project built with HTML/CSS/JS.</p>
+        <div class="cta-row">
+          <button class="btn btn-primary" onclick="scrollToForm()">Start hiring</button>
+          <button class="btn btn-ghost" id="loadDraft">Load last draft</button>
+        </div>
+
+        <div style="margin-top:18px">
+          <div class="muted-2">Trusted by</div>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <div class="chip">Acme</div>
+            <div class="chip">Nova</div>
+            <div class="chip">Bridge</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0">Live demo: Application preview</h3>
+        <p class="small">Fill the form and see the application preview update in real time. This helps you quickly iterate on field wording and requirements.</p>
+        <div style="margin-top:12px;padding:12px;border-radius:8px;background:var(--glass)">
+          <strong id="previewName">—</strong>
+          <div id="previewPosition" class="muted small">No position selected</div>
+          <div id="previewSkills" style="margin-top:8px" class="small muted">No skills chosen</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="features" style="margin-top:12px">
+      <div class="card">
+        <h3 style="margin:0">Features</h3>
+        <div style="margin-top:12px;display:flex;gap:12px;flex-wrap:wrap">
+          <div style="flex:1;min-width:220px">
+            <strong>Live preview</strong>
+            <div class="muted">See applicant input in real time.</div>
+          </div>
+          <div style="flex:1;min-width:220px">
+            <strong>Draft saving</strong>
+            <div class="muted">Candidates can save and continue later.</div>
+          </div>
+          <div style="flex:1;min-width:220px">
+            <strong>Client-side validation</strong>
+            <div class="muted">Quick feedback before submission.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="plans" style="margin-top:18px">
+      <div class="card">
+        <h3 style="margin:0">Plans</h3>
+        <div class="plan-grid" style="margin-top:12px">
+          <div class="plan">
+            <div style="font-weight:800">Starter</div>
+            <div class="muted">Free • up to 50 apps / month</div>
+          </div>
+          <div class="plan">
+            <div style="font-weight:800">Pro</div>
+            <div class="muted">₹499 / month • unlimited apps</div>
+          </div>
+          <div class="plan">
+            <div style="font-weight:800">Enterprise</div>
+            <div class="muted">Custom • SSO & team features</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="apply" style="margin-top:18px">
+      <div class="split">
+        <form class="card" id="applicationForm" aria-labelledby="apply">
+          <h3 style="margin-top:0">Apply for a role</h3>
+
+          <div class="field">
+            <label for="name">Full name</label>
+            <input id="name" type="text" placeholder="Jane Doe" required aria-required="true">
+            <div id="errName" class="error" aria-live="polite"></div>
+          </div>
+
+          <div class="field">
+            <label for="email">Email address</label>
+            <input id="email" type="email" placeholder="jane@company.com" required>
+            <div id="errEmail" class="error" aria-live="polite"></div>
+          </div>
+
+          <div class="field">
+            <label for="position">Position</label>
+            <select id="position" aria-label="position">
+              <option value="">-- choose a position --</option>
+              <option>Frontend Engineer</option>
+              <option>Backend Engineer</option>
+              <option>Data Scientist</option>
+              <option>Product Designer</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label>Skills</label>
+            <div class="skills" id="skillsList" role="list" aria-label="skills list">
+              <button type="button" class="chip" data-skill="JavaScript">JavaScript</button>
+              <button type="button" class="chip" data-skill="React">React</button>
+              <button type="button" class="chip" data-skill="Python">Python</button>
+              <button type="button" class="chip" data-skill="SQL">SQL</button>
+              <button type="button" class="chip" data-skill="Figma">Figma</button>
+            </div>
+            <div class="muted">Click to toggle skills</div>
+          </div>
+
+          <div class="field">
+            <label for="cover">Cover letter</label>
+            <textarea id="cover" placeholder="Tell us why you're a fit..."></textarea>
+          </div>
+
+          <div class="field">
+            <label for="resume">Upload resume (PDF)</label>
+            <input id="resume" type="file" accept="application/pdf">
+            <div id="resumeInfo" class="muted small">No file chosen</div>
+            <div id="errResume" class="error" aria-live="polite"></div>
+          </div>
+
+          <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
+            <button type="button" class="btn btn-primary" id="submitBtn">Submit application</button>
+            <button type="button" class="btn" id="saveDraft">Save draft</button>
+            <button type="reset" class="btn">Reset</button>
+          </div>
+
+          <div style="margin-top:12px;font-size:13px;color:var(--muted)">By applying you agree to our <a href="#">terms</a>.</div>
+
+        </form>
+
+        <aside class="card preview" aria-labelledby="previewTitle">
+          <h3 id="previewTitle">Application preview</h3>
+          <div style="margin-top:8px">
+            <strong id="pName">—</strong>
+            <div id="pEmail" class="small muted">—</div>
+            <div id="pPos" style="margin-top:8px" class="muted small">No position</div>
+            <div id="pSkills" style="margin-top:8px" class="small muted">No skills</div>
+            <div id="pCover" style="margin-top:12px" class="small muted">No cover letter</div>
+            <div id="pResume" style="margin-top:12px" class="small muted">No resume uploaded</div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // Simple DOM helpers
+    const $ = sel => document.querySelector(sel)
+    const $$ = sel => Array.from(document.querySelectorAll(sel))
+
+    // elements
+    const nameIn = $('#name'), emailIn = $('#email'), positionIn = $('#position'), coverIn = $('#cover')
+    const resumeIn = $('#resume'), resumeInfo = $('#resumeInfo'), errResume = $('#errResume')
+    const chips = $$('.chip'), submitBtn = $('#submitBtn'), saveDraftBtn = $('#saveDraft'), loadDraftBtn = $('#loadDraft')
+
+    // preview nodes
+    const pName = $('#pName'), pEmail = $('#pEmail'), pPos = $('#pPos'), pSkills = $('#pSkills'), pCover = $('#pCover'), pResume = $('#pResume')
+    const previewName = $('#previewName'), previewPosition = $('#previewPosition'), previewSkills = $('#previewSkills')
+
+    // toast
+    const toast = $('#toast')
+
+    // theme toggle
+    const themeToggle = $('#themeToggle')
+    themeToggle.addEventListener('click', () => {
+      const root = document.documentElement
+      const isDark = root.getAttribute('data-theme') === 'dark'
+      root.setAttribute('data-theme', isDark ? 'light' : 'dark')
+    })
+
+    // skill chip toggles
+    const selectedSkills = new Set()
+    chips.forEach(ch => {
+      ch.addEventListener('click', () => {
+        const skill = ch.dataset.skill
+        if(selectedSkills.has(skill)){
+          selectedSkills.delete(skill); ch.classList.remove('selected')
+        } else { selectedSkills.add(skill); ch.classList.add('selected') }
+        updatePreview()
+      })
+    })
+
+    // resume validation + preview
+    resumeIn.addEventListener('change', e => {
+      const file = e.target.files[0]
+      errResume.textContent = ''
+      if(!file) { resumeInfo.textContent = 'No file chosen'; pResume.textContent = 'No resume uploaded'; return }
+      if(file.type !== 'application/pdf'){
+        errResume.textContent = 'Please upload a PDF file.'
+        resumeIn.value = ''
+        resumeInfo.textContent = 'No file chosen'
+        pResume.textContent = 'No resume uploaded'
+        return
+      }
+      resumeInfo.textContent = file.name
+      pResume.textContent = file.name
+    })
+
+    // Validation helpers
+    function validateEmail(v){
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)
+    }
+
+    function showToast(msg, time=2500){
+      toast.textContent = msg; toast.style.display = 'block'
+      setTimeout(()=>{ toast.style.display = 'none' }, time)
+    }
+
+    // live preview
+    function updatePreview(){
+      pName.textContent = nameIn.value || '—'
+      pEmail.textContent = emailIn.value || '—'
+      pPos.textContent = positionIn.value ? positionIn.value : 'No position'
+      pSkills.textContent = selectedSkills.size ? Array.from(selectedSkills).join(', ') : 'No skills'
+      pCover.textContent = coverIn.value ? coverIn.value.slice(0,400) : 'No cover letter'
+
+      previewName.textContent = nameIn.value || '—'
+      previewPosition.textContent = positionIn.value ? positionIn.value : 'No position selected'
+      previewSkills.textContent = selectedSkills.size ? Array.from(selectedSkills).join(', ') : 'No skills chosen'
+    }
+
+    // wire inputs to preview
+    [nameIn,emailIn,positionIn,coverIn].forEach(el=>el.addEventListener('input', updatePreview))
+
+    // save/load draft using localStorage
+    function saveDraft(){
+      const draft = {
+        name: nameIn.value,
+        email: emailIn.value,
+        position: positionIn.value,
+        skills: Array.from(selectedSkills),
+        cover: coverIn.value,
+        resumeName: resumeIn.files[0] ? resumeIn.files[0].name : null
+      }
+      localStorage.setItem('jobapply:draft', JSON.stringify(draft))
+      showToast('Draft saved locally')
+    }
+
+    function loadDraft(){
+      const raw = localStorage.getItem('jobapply:draft')
+      if(!raw){ showToast('No draft found'); return }
+      const d = JSON.parse(raw)
+      nameIn.value = d.name || ''
+      emailIn.value = d.email || ''
+      positionIn.value = d.position || ''
+      coverIn.value = d.cover || ''
+      selectedSkills.clear(); chips.forEach(c=>c.classList.remove('selected'))
+      (d.skills||[]).forEach(s=>{
+        selectedSkills.add(s); const el = chips.find(ch=>ch.dataset.skill===s); if(el) el.classList.add('selected')
+      })
+      if(d.resumeName){ resumeInfo.textContent = d.resumeName; pResume.textContent = d.resumeName }
+      updatePreview()
+      showToast('Draft loaded')
+    }
+
+    saveDraftBtn.addEventListener('click', saveDraft)
+    loadDraftBtn.addEventListener('click', loadDraft)
+
+    // form submit simulation
+    submitBtn.addEventListener('click', () => {
+      // clear errors
+      $('#errName').textContent = ''
+      $('#errEmail').textContent = ''
+      errResume.textContent = ''
+
+      let ok = true
+      if(!nameIn.value.trim()){ $('#errName').textContent = 'Please enter your name'; ok=false }
+      if(!validateEmail(emailIn.value)){ $('#errEmail').textContent = 'Please enter a valid email'; ok=false }
+      const file = resumeIn.files[0]
+      if(!file){ errResume.textContent = 'Please upload your resume (PDF)'; ok=false }
+      else if(file.type !== 'application/pdf'){ errResume.textContent = 'Resume must be a PDF'; ok=false }
+
+      if(!ok) return
+
+      // simulate API call
+      submitBtn.disabled = true
+      const oldText = submitBtn.textContent
+      submitBtn.textContent = 'Sending...'
+      setTimeout(()=>{
+        submitBtn.disabled = false
+        submitBtn.textContent = oldText
+        showToast('Application submitted — thanks!')
+        // clear local draft after successful submit
+        localStorage.removeItem('jobapply:draft')
+      }, 1500)
+    })
+
+    // keyboard accessibility: allow Enter key on chips to toggle
+    chips.forEach(ch=>{
+      ch.setAttribute('tabindex','0')
+      ch.addEventListener('keydown', e => { if(e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ch.click() } })
+    })
+
+    // initialize preview on load
+    updatePreview()
+
+    // scroll helper
+    function scrollToForm(){ document.querySelector('#apply').scrollIntoView({behavior:'smooth'}) }
+
+    // expose scrollToForm to window for onclick
+    window.scrollToForm = scrollToForm
+
+    // keyboard accessible reset handling to also clear selected chips & preview
+    document.querySelector('form').addEventListener('reset', ()=>{
+      setTimeout(()=>{
+        selectedSkills.clear(); chips.forEach(c=>c.classList.remove('selected'))
+        resumeInfo.textContent = 'No file chosen'; pResume.textContent = 'No resume uploaded'
+        updatePreview()
+      }, 0)
+    })
+
+    // small progressive enhancement: remember theme in sessionStorage
+    (function(){
+      const t = sessionStorage.getItem('jobapply:theme') || 'light'
+      document.documentElement.setAttribute('data-theme', t)
+      themeToggle.addEventListener('click', ()=>{
+        const current = document.documentElement.getAttribute('data-theme')
+        const next = current === 'dark' ? 'light' : 'dark'
+        document.documentElement.setAttribute('data-theme', next)
+        sessionStorage.setItem('jobapply:theme', next)
+      })
+    })()
+
+  </script>
+</body>
+</html>
